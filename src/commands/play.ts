@@ -8,7 +8,10 @@ import {
 import { GuildMember, SlashCommandBuilder } from "discord.js";
 import { Readable } from "stream";
 import type { SlashCommand } from "../helpers/SlashCommand";
-import youtubedl, { youtubeDl, type Payload } from "youtube-dl-exec";
+import { youtubeDl, type Payload } from "youtube-dl-exec";
+import { Player } from "../helpers/Player";
+
+const players = new Map<string, Player>();
 
 export default {
   data: new SlashCommandBuilder()
@@ -22,98 +25,33 @@ export default {
     ),
 
   execute: async (interaction) => {
-    await interaction.deferReply();
-
     const userYtLink = interaction.options.getString("link")!;
-    const videoId = extractVideoId(userYtLink);
 
-    if (!videoId) {
-      await interaction.reply("Invalid youtube ID");
-      return;
-    }
+    await interaction.deferReply();
 
     const member = interaction.member as GuildMember;
     if (!member.voice.channel) {
-      await interaction.reply("Must be in a voice channel");
-      return;
+      return await interaction.reply("Must be in a voice channel");
     }
 
-    if (!getVoiceConnection(interaction.guildId!)) {
-      console.log("Not yet in a voice channel, joining");
-      const conn = joinVoiceChannel({
-        adapterCreator: interaction.guild?.voiceAdapterCreator!,
-        channelId: member.voice.channelId!,
-        guildId: interaction.guildId!,
-      });
+    const player = !players.get(interaction.guildId!)
+      ? new Player()
+      : players.get(interaction.guildId!)!;
 
-      conn.on("error", (err) => {
-        console.error("Something gone wrong, destroying connection", err);
-        conn.destroy();
-      });
+    if (!player.onVoiceChannel) {
+      player.joinVoiceChannel(
+        member.voice.channelId!,
+        interaction.guildId!,
+        interaction.guild?.voiceAdapterCreator!,
+      );
     }
 
-    const infoRaw = await youtubeDl(
-      `https://www.youtube.com/watch?v=${videoId}`,
-      {
-        dumpSingleJson: true,
-        // noWarnings: true,
-
-        format: "bestaudio[ext=m4a]/bestaudio",
-      },
-    );
-
-    const decoded =
-      typeof infoRaw == "string"
-        ? (JSON.parse(infoRaw) as Payload & { url?: string })
-        : (infoRaw as Payload & { url?: string });
-
-    const streamUrl = decoded.url;
-    if (!streamUrl) throw new Error("No audio stream URL found");
-
-    const response = await fetch(streamUrl, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      },
-    });
-
-    if (!response.ok || !response.body)
-      throw new Error("Failed to fetch audio stream");
-
-    const player = createAudioPlayer({
-      behaviors: { noSubscriber: NoSubscriberBehavior.Pause },
-      debug: true,
-    });
-
-    player.on("error", (err) => console.error("Some player error", err));
-    player.on("debug", (msg) => console.debug("[PLAYER]", msg));
-
-    getVoiceConnection(interaction.guildId!)?.subscribe(player);
-
-    const resource = createAudioResource(Readable.from(response.body));
-    player.play(resource);
+    const info = await player.play(userYtLink);
 
     try {
-      await interaction.reply({ content: "Okay" });
+      await interaction.editReply({ content: "Okay" });
     } catch (err) {
       console.error("failed to respond", err);
     }
   },
 } satisfies SlashCommand;
-
-function extractVideoId(url: string) {
-  if (!url || typeof url !== "string") return null;
-
-  // Handle youtu.be shorthand
-  if (url.includes("youtu.be/")) {
-    return url.split("youtu.be/")[1]?.split("?")[0]?.split("&")[0] || null;
-  }
-
-  // Handle full YouTube URLs
-  try {
-    const urlObj = new URL(url);
-    return urlObj.searchParams.get("v") || null;
-  } catch {
-    return null; // Invalid URL
-  }
-}

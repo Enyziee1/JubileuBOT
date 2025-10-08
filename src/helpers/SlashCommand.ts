@@ -5,5 +5,5 @@ import type {
 
 export type SlashCommand = {
   data: SharedSlashCommand;
-  execute: (interaction: ChatInputCommandInteraction) => Promise<void>;
+  execute: (interaction: ChatInputCommandInteraction) => void;
 };
