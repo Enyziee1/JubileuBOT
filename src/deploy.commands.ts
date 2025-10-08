@@ -23,7 +23,7 @@ const clientId = process.env["CLIENT_ID"];
 const guildId = process.env["GUILD_ID"];
 
 if (!token || !clientId || !guildId)
-  throw new Error(`Missing value for: `, {
+  throw new Error(`Missing value for env`, {
     cause: "Missing environment variable",
   });
 

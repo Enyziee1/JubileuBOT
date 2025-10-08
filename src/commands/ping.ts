@@ -1,17 +1,11 @@
-import {
-  BaseInteraction,
-  CommandInteraction,
-  SlashCommandBuilder,
-} from "discord.js";
-
-export type SlashCommand = {
-  data: SlashCommandBuilder;
-  execute: (interaction: CommandInteraction) => Promise<void>;
-};
+import { SlashCommandBuilder } from "discord.js";
+import type { SlashCommand } from "../helpers/SlashCommand";
 
 export default {
-  data: new SlashCommandBuilder().setName("albion"),
+  data: new SlashCommandBuilder()
+    .setName("ping")
+    .setDescription("Returns the server latency"),
   execute: async (interaction) => {
-    await interaction.reply("Test");
+    await interaction.reply(interaction.client.ws.ping + "ms");
   },
 } satisfies SlashCommand;

@@ -1,6 +1,13 @@
-import { Client, GatewayIntentBits } from "discord.js";
+import {
+  BaseInteraction,
+  ChatInputCommandInteraction,
+  Client,
+  GatewayIntentBits,
+  type ChatInputApplicationCommandData,
+} from "discord.js";
 import * as fs from "fs";
-import type { SlashCommand } from "./commands/ping";
+import type { SlashCommand } from "./helpers/SlashCommand";
+import { CookieMap } from "bun";
 
 const bot = new Client({
   intents: [
@@ -27,12 +34,21 @@ const loadCommands = async () => {
 
 const commands = await loadCommands();
 
-bot.once("ready", () => {
+bot.once("clientReady", () => {
   console.log("Bot ready!");
 });
 
-bot.on("interactionCreate", (interaction) => {
+bot.on("interactionCreate", async (interaction) => {
+  console.log("Received an interaction");
+
   if (!interaction.isCommand()) return;
+
+  const command = commands.find((c) => c.data.name == interaction.commandName);
+
+  const t1 = performance.now();
+  await command?.execute(interaction as ChatInputCommandInteraction);
+  const t2 = performance.now();
+  console.log(`Interaction took ${t2 - t1}ms to run`);
 });
 
 bot.login(process.env["DISCORD_BOT_TOKEN"]);
