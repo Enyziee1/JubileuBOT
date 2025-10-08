@@ -1,26 +1,14 @@
 import {
-  GuildMember,
-  SlashCommandBuilder,
-  VoiceChannel,
-  VoiceConnectionStates,
-} from "discord.js";
-import type { SlashCommand } from "../helpers/SlashCommand";
-import Innertube, { UniversalCache } from "youtubei.js";
-import {
   createAudioPlayer,
   createAudioResource,
   getVoiceConnection,
   joinVoiceChannel,
   NoSubscriberBehavior,
 } from "@discordjs/voice";
-
+import { GuildMember, SlashCommandBuilder } from "discord.js";
 import { Readable } from "stream";
-
-const yt = await Innertube.create({
-  cache: new UniversalCache(true, "./cache"),
-  enable_session_cache: true,
-  player_id: "0004de42",
-});
+import type { SlashCommand } from "../helpers/SlashCommand";
+import youtubedl, { youtubeDl, type Payload } from "youtube-dl-exec";
 
 export default {
   data: new SlashCommandBuilder()
@@ -34,6 +22,8 @@ export default {
     ),
 
   execute: async (interaction) => {
+    await interaction.deferReply();
+
     const userYtLink = interaction.options.getString("link")!;
     const videoId = extractVideoId(userYtLink);
 
@@ -62,11 +52,33 @@ export default {
       });
     }
 
-    const video = await yt.getInfo(videoId);
-    const stream = await video.download({
-      client: "ANDROID",
-      type: "audio",
+    const infoRaw = await youtubeDl(
+      `https://www.youtube.com/watch?v=${videoId}`,
+      {
+        dumpSingleJson: true,
+        // noWarnings: true,
+
+        format: "bestaudio[ext=m4a]/bestaudio",
+      },
+    );
+
+    const decoded =
+      typeof infoRaw == "string"
+        ? (JSON.parse(infoRaw) as Payload & { url?: string })
+        : (infoRaw as Payload & { url?: string });
+
+    const streamUrl = decoded.url;
+    if (!streamUrl) throw new Error("No audio stream URL found");
+
+    const response = await fetch(streamUrl, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      },
     });
+
+    if (!response.ok || !response.body)
+      throw new Error("Failed to fetch audio stream");
 
     const player = createAudioPlayer({
       behaviors: { noSubscriber: NoSubscriberBehavior.Pause },
@@ -78,10 +90,14 @@ export default {
 
     getVoiceConnection(interaction.guildId!)?.subscribe(player);
 
-    const resource = createAudioResource(Readable.from(stream));
+    const resource = createAudioResource(Readable.from(response.body));
     player.play(resource);
 
-    await interaction.reply("Okay");
+    try {
+      await interaction.reply({ content: "Okay" });
+    } catch (err) {
+      console.error("failed to respond", err);
+    }
   },
 } satisfies SlashCommand;
 

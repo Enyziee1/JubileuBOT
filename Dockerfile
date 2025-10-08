@@ -1,15 +1,12 @@
-FROM node:lts-alpine as dependencies
+FROM node:lts-alpine AS deps
 
-COPY package.json .
+COPY package*.json .
 RUN apk add --no-cache build-base make autoconf automake libtool libsodium python3
-RUN npm install --verbose 
+RUN npm ci --omit-dev
 
-FROM node:lts-alpine as compilation
+FROM node:lts-alpine AS build
 
-COPY --from=dependencies node_modules/ node_modules/
-COPY . .
-RUN npm install -g --verbose typescript
-RUN tsc
+COPY package*.json .
 
 FROM node:lts-alpine
 
